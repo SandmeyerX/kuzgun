@@ -1,0 +1,39 @@
+name: Windows compile check
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Windows cargo check
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Rust toolchain
+        run: rustup show active-toolchain || rustup toolchain install
+
+      # GPUI 在 Windows 上依赖 Win32 / DirectX 相关链接，通常需要 MSVC + Windows SDK。
+      # windows-latest 镜像一般自带，但显式确认一下更稳妥。
+      - name: Verify MSVC & Windows SDK
+        shell: pwsh
+        run: |
+          $vswhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          if (Test-Path $vswhere) {
+            & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          } else {
+            Write-Host "vswhere not found, but windows-latest usually includes MSVC."
+          }
+
+      # 先用 cargo check 快速暴露类型和依赖问题，比完整 build 快很多。
+      - name: cargo check
+        run: cargo check --workspace --all-targets
+
+      # 如果 check 通过，再尝试完整 release 构建。
+      # 如果 check 已经失败，这一步会跳过，节省时间。
+      - name: cargo build --release
+        if: success()
+        run: cargo build --release --workspace
