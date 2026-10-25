@@ -23,6 +23,7 @@ block2 = "0.6"
 similar = { version = "3.2.0", features = ["inline"] }
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 md5 = "0.8.1"
+find-msvc-tools = "0.1.14"
 
 # The same local patches Tusk carries: editor-style checkbox / switch,
 # inline Markdown code at the text size, toast layout.
