@@ -1,6 +1,6 @@
 name: Windows compile check
 
-on:
+'on':
   workflow_dispatch:
 
 jobs:
@@ -16,8 +16,13 @@ jobs:
       - name: Rust toolchain
         run: rustup show active-toolchain || rustup toolchain install
 
-      # GPUI 在 Windows 上依赖 Win32 / DirectX 相关链接，通常需要 MSVC + Windows SDK。
-      # windows-latest 镜像一般自带，但显式确认一下更稳妥。
+      # 这是手动触发的检查工作流，不是 release，所以可以用缓存加速迭代。
+      # release.yml 里的 "No build cache" 约束不适用于这里。
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: windows-check
+
       - name: Verify MSVC & Windows SDK
         shell: pwsh
         run: |
@@ -28,12 +33,30 @@ jobs:
             Write-Host "vswhere not found, but windows-latest usually includes MSVC."
           }
 
-      # 先用 cargo check 快速暴露类型和依赖问题，比完整 build 快很多。
+      # 先做类型检查，失败会在这里就停，比完整 build 快很多。
       - name: cargo check
         run: cargo check --workspace --all-targets
 
-      # 如果 check 通过，再尝试完整 release 构建。
-      # 如果 check 已经失败，这一步会跳过，节省时间。
+      # check 通过后再做完整链接，确认能产出可执行文件。
       - name: cargo build --release
-        if: success()
         run: cargo build --release --workspace
+
+      # 明确断言 exe 存在，避免 upload-artifact 静默跳过。
+      - name: Locate the binary
+        shell: pwsh
+        run: |
+          $exe = "target/release/kuzgun.exe"
+          if (-not (Test-Path $exe)) {
+            Write-Error "$exe not found"
+            Get-ChildItem target/release -Filter *.exe -ErrorAction SilentlyContinue | Select-Object Name, Length
+            exit 1
+          }
+          Get-ChildItem target/release -Filter *.exe | Select-Object Name, Length
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: kuzgun-windows
+          path: target/release/kuzgun.exe
+          if-no-files-found: error
+          retention-days: 14
